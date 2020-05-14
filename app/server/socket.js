@@ -104,7 +104,6 @@ module.exports = function socket (socket) {
         err = { message: reason }
         SSHerror('CLIENT SOCKET DISCONNECT', err)
         conn.end()
-        // socket.request.session.destroy()
       })
       socket.on('error', function socketOnError (err) {
         SSHerror('SOCKET ERROR', err)
@@ -132,26 +131,62 @@ module.exports = function socket (socket) {
   })
   if (socket.request.session.username && (socket.request.session.userpassword || socket.request.session.privatekey) && socket.request.session.ssh) {
     // console.log('hostkeys: ' + hostkeys[0].[0])
-    conn.connect({
-      host: socket.request.session.ssh.host,
-      port: socket.request.session.ssh.port,
-      localAddress: socket.request.session.ssh.localAddress,
-      localPort: socket.request.session.ssh.localPort,
-      username: socket.request.session.username,
-      password: socket.request.session.userpassword,
-      privateKey: socket.request.session.privatekey,
-      tryKeyboard: true,
-      algorithms: socket.request.session.ssh.algorithms,
-      readyTimeout: socket.request.session.ssh.readyTimeout,
-      keepaliveInterval: socket.request.session.ssh.keepaliveInterval,
-      keepaliveCountMax: socket.request.session.ssh.keepaliveCountMax,
-      debug: debug('ssh2')
-    })
   } else {
-    debugWebSSH2('Attempt to connect without session.username/password or session varialbles defined, potentially previously abandoned client session. disconnecting websocket client.\r\nHandshake information: \r\n  ' + JSON.stringify(socket.handshake))
-    socket.emit('ssherror', 'WEBSOCKET ERROR - Refresh the browser and try again')
-    socket.request.session.destroy()
-    socket.disconnect(true)
+    debugWebSSH2('Attempt to connect without session.username/password. Prompting user for credentials.\r\nHandshake information: \r\n  ' + JSON.stringify(socket.handshake))
+    socket.emit('data','Login to '+socket.request.session.ssh.host);
+    socket.emit('data','\r\nUser: ');
+    socket.request.session.userpassword='';
+    let token = '';
+    let connected = false;
+    socket.on('data',function readCredentials(data){
+      if(connected){
+        return;
+      }
+      if(data == '\r'){
+        if(!socket.request.session.username){
+          socket.request.session.username = token;
+          token = '';
+          socket.emit('data','\r\nPassword: ');
+        } else {
+          conn.connect({
+            host: socket.request.session.ssh.host,
+            port: socket.request.session.ssh.port,
+            localAddress: socket.request.session.ssh.localAddress,
+            localPort: socket.request.session.ssh.localPort,
+            username: socket.request.session.username,
+            password: token,
+            privateKey: socket.request.session.privatekey,
+            tryKeyboard: true,
+            algorithms: socket.request.session.ssh.algorithms,
+            readyTimeout: socket.request.session.ssh.readyTimeout,
+            keepaliveInterval: socket.request.session.ssh.keepaliveInterval,
+            keepaliveCountMax: socket.request.session.ssh.keepaliveCountMax,
+            debug: debug('ssh2')
+          })
+          token = '';
+          connected = true;        
+        }
+        socket.emit('data',socket.request.session.userpassword);
+      } else {
+        if(data == String.fromCharCode(127)){
+          // Delete input 
+          if(token.length > 0){
+            token = token.substring(0,token.length-1);
+          }
+          // Delete character in terminal.
+          socket.emit('data','\b\u001b[K');
+        } else {
+          token += data;
+          if(!socket.request.session.username){ // Do not emit password
+            socket.emit('data',data);
+          }
+        }
+      }
+    });
+
+    //socket.emit('ssherror', 'WEBSOCKET ERROR - Refresh the browser and try again')
+    //socket.request.session.destroy()
+    //socket.disconnect(true)
   }
 
   /**

@@ -123,7 +123,7 @@ var favicon = require('serve-favicon');
 // express
 app.use(safeShutdownGuard)
 app.use(session)
-app.use(myutil.basicAuth)
+app.use(myutil.defaultAuth)
 if (config.accesslog) app.use(logger('common'))
 app.disable('x-powered-by')
 
