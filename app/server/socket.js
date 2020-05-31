@@ -142,12 +142,19 @@ module.exports = function socket (socket) {
       if(connected){
         return;
       }
+      if(data == '\t'){
+        // Ignore tab key.
+        return;
+      }
       if(data == '\r'){
         if(!socket.request.session.username){
           socket.request.session.username = token;
           token = '';
           socket.emit('data','\r\nPassword: ');
         } else {
+          // Clear terminal
+          socket.emit('data','\u001b[H\u001b[2J');
+          // Attempt to establish a SSH connection
           conn.connect({
             host: socket.request.session.ssh.host,
             port: socket.request.session.ssh.port,
@@ -172,9 +179,9 @@ module.exports = function socket (socket) {
           // Delete input 
           if(token.length > 0){
             token = token.substring(0,token.length-1);
+            // Delete character in terminal.
+            socket.emit('data','\b\u001b[K');
           }
-          // Delete character in terminal.
-          socket.emit('data','\b\u001b[K');
         } else {
           token += data;
           if(!socket.request.session.username){ // Do not emit password
@@ -204,6 +211,7 @@ module.exports = function socket (socket) {
       theError = (socket.request.session.error) ? ': ' + socket.request.session.error : ''
       // log unsuccessful login attempt
       if (err && (err.level === 'client-authentication')) {
+        socket.emit('data','Invalid credentials.');
         console.log('WebSSH2 ' + 'error: Authentication failure'.red.bold +
           ' user=' + socket.request.session.username.yellow.bold.underline +
           ' from=' + socket.handshake.address.yellow.bold.underline)
